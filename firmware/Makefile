@@ -18,7 +18,7 @@ CFLAGS  := $(ARCH) -nostdlib -nostdinc -ffreestanding -fno-builtin \
 LDFLAGS := $(ARCH) -nostdlib -Wl,--no-undefined -Wl,--gc-sections -T ld/rytm.ld \
            -Wl,-Map,rytmfw.map -Wl,--print-memory-usage
 
-OBJS    := build/crt0.o build/hal.o build/display.o build/main.o
+OBJS    := build/crt0.o build/hal.o build/display.o build/memprobe.o build/main.o
 
 all: rytmfw.bin
 
