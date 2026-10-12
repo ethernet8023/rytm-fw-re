@@ -15,18 +15,23 @@ All addresses are stock OS 1.74 facts; nothing here ships firmware.
 | `ev_settings` | view registry tables at 0x401c-0x401e (data-driven menus; base ctor FUN_400784c8, 61 view types) | append view entries |
 | `ev_input_raw` | event queues: 8 queues, masks 0x401bf1b8, nodes {value,+8; cb,+9; arg,+0xc; magic 0xdead0001}, enqueue FUN_40003d24(queue,node), node alloc FUN_4000396a (pool 0x413db3a8) | enqueue nodes w own callbacks — the cleanest hook |
 
-## Memory budgets (from reference scan, mem_scan2)
+## Memory budgets (HARDWARE-CONFIRMED 2026-10-08, alpha4 memprobe on a real unit)
 
 - **Mod memory (primary):** 0x41ad0000-0x42abffff — 16.3 MB contiguous,
-  zero static references from stock OS. Candidate for core + mods code/data.
-- Secondary: 0x407d0000-0x412cffff (11 MB), 0x413f0000-0x415dffff (2 MB),
-  0x415f0000-0x417dffff (2 MB).
-- **Fast memory:** FPGA SRAM 0x80000000-0x8000ffff: stock uses it densely
-  (display, LED engine, event queues, codec buffers) — 0x8000c000-0x8000dfff
-  are the sparsest blocks (99/56 refs); needs hardware probe before claim.
-- Untested-above: 0x4b940000-0x4fffffff (70 MB) — unknown if mapped.
-- **All static-analysis only**: heap arenas grow at runtime; probe on
-  hardware (write/read/verify patterns from alpha OS) before claiming.
+  zero static references, **pattern write/read PASSED on hardware**
+  (sampled 2MB span @64KB stride). Candidate for core + mods code/data.
+- 0x407d0000-0x412cffff (11 MB): PASSED. 0x413f0000-0x415dffff (2 MB):
+  PASSED. 0x415f0000-0x417dffff (2 MB): PASSED.
+- **Fast memory:** FPGA SRAM 0x8000c000 (8 KB probed): PASSED — fast-mem
+  candidate confirmed.
+- **Top of DDR:** 0x4b940000 (8 KB probed): PASSED — region above 0x4b930000
+  is mapped; up to ~70 MB more potentially usable.
+- Probe method: sparse pattern samples (addr^0xA5A5A5A5 + complement), so
+  "passed" = region mapped+writable at sample points; a mod core should
+  still claim conservatively (e.g. 1MB of the 16MB hole) until a dense
+  probe runs.
+- **All 7 probe rows solid** — first boot of the from-source replacement OS
+  on hardware; display driver + probe + flush all worked.
 
 ## Claims vocabulary (modwerk shape)
 
