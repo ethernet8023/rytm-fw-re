@@ -43,6 +43,8 @@ from-source C++ replacement firmware that can be compiled into a flashable
 - `elektron-firmware-tool/` — mischa85's tool (built binary inside), wrap/unwrap
 - `libanalogrytm/`, `octamax/` — community refs
 - `analysis/ghidra-scripts/` — pyghidra query scripts
+- `scripts/` — flash/probe tooling + the static-data mod pipeline
+  (`fwpatch.py`, `splash_bmp.py`, `led_sweep.py`, `build_mod.py`)
 - `analysis/output/periph_out.txt` — fns referencing peripherals + callers
 - `analysis/output/decomp_out.txt` — decompiled UI test suite + a view fn
 
@@ -200,6 +202,27 @@ $C"objcopy" -O binary rytmfw.elf rytmfw.bin'
 6. **Core artifacts:** docs/core-interface-draft.md drafted (modwerk
    interface.json shape); patch-site extraction script (address + length +
    SHA-256 per hook) still to write.
+
+**Static-data mods (hardware-confirmed 2026-10-12: flashed over USB, booted, splash + LED animation seen on the unit):**
+- Pipeline in `scripts/`: `fwpatch.py` (load section 3 / patch / wrap / verify),
+  `splash_bmp.py` (boot-splash bitmap <-> BMP, both directions),
+  `led_sweep.py` (show / preview / build --hue | --flag | --rgb),
+  `build_mod.py` (chains all mods into one .syx so one flash carries them all).
+- The mods are same-size static-data swaps inside section 3 (splash art, LED
+  palette + sweep table): no code patched, no relocation, no in-section
+  checksum. The container's 16-byte section alignment is re-checked on every
+  build, and with unmodified inputs the pipeline is byte-lossless.
+- Boot splash: two 1-bit bitmaps (32x24, 117x17) in a column-major plane format
+  that a ~100-frame dither wipe blends between. Plane rows run bottom-up on the
+  panel, so authored art is stored row-reversed.
+- LED animation: a colour is a palette index `(hue << 4) | level`; the splash
+  drives a 42-entry phase table (0x40289104) over an 8-group LED-id table, and
+  the palette (0x401d8ae0) is 6 reachable banks x 7 hues x 16 levels x RGB with
+  5-bit channels. The phase table is the gradient you watch travel along the
+  panel, so banded hues in it read as stripes. That palette is SHARED with the
+  UI, so recolouring a hue shifts it everywhere — recolouring by the phase
+  table's hue nibbles only is bank-independent and touches nothing else.
+- Format notes + addresses: docs/splash-and-led-mods.md.
 
 **Legal note:** static analysis of a lawfully obtained OS, no redistribution of
 Elektron binaries; community norm (EU 2009/24/EC Art. 5). The skill

@@ -18,7 +18,7 @@ OS download — obtainable from Elektron's Support & Downloads page.
   content checksum. **No HMAC/signature on this device** (unlike Digitakt II).
 - Sections: `2` bootstrap (SRAM 0x07020000), `1` FPGA bitstream, `3` MAIN OS
   (DDR 0x40000400), `5` meta, `8` unknown (~160 KB, likely upgrade journal;
-  contains the string "No active upgrade").
+  carries an upgrade-state status string).
 - [mischa85/elektron-firmware-tool](https://github.com/mischa85/elektron-firmware-tool)
   unpacks and repacks. Verified on OS 1.74: `-r` self-repack is **byte-identical**
   to the stock file, and a `-c 3` replacement round-trips exactly.
@@ -30,7 +30,7 @@ OS download — obtainable from Elektron's Support & Downloads page.
 - Startup menu ([FUNC] at power-on) lives entirely in the bootstrap section:
   key/encoder/pot/pad tests, empty reset, factory reset, OS upgrade receiver.
   An OS-only update can never touch it; a bad OS is always recoverable.
-- Bootstrap version-checks upgrades: "DOWNGRADE NOT POSSIBLE".
+- Bootstrap version-checks upgrades and refuses to install an older version.
 
 ### CPU / memory map (ColdFire MCF5445x family, big-endian)
 - DDR 0x40000000+ (OS at 0x40000400, kernel globals ~0x413dxxxx–0x42f9xxxx),
@@ -58,13 +58,31 @@ OS download — obtainable from Elektron's Support & Downloads page.
 - Gotcha: the nixpkgs m68k binutils `ld` *wrapper* segfaults and emits corrupt
   ELFs; invoke `ld.bfd` from the binutils package directly.
 
+### Static-data mods (hardware-confirmed)
+- The MAIN OS section carries the boot-splash art and the LED palette as plain
+  static data at fixed addresses, so both can be replaced with same-size byte
+  patches — no relocation, no in-section checksum, container rebuilt by the
+  update tool. Flashed and confirmed on a real unit.
+- Splash: two 1-bit bitmaps (32x24 and 117x17) in a column-major plane format
+  that a ~100-frame dither wipe blends between. Panel rows run bottom-up
+  relative to plane rows.
+- LEDs: a colour is a palette index `(hue << 4) | level`, and the boot animation
+  is a 42-entry phase table indexing a 6-bank x 7 hue x 16 level palette. The
+  phase table is the gradient you watch travel along the panel, so banded hues
+  in it read as stripes.
+- Full format notes, addresses and tooling: [docs/splash-and-led-mods.md](docs/splash-and-led-mods.md)
+
 ## Layout
 - `analysis/ghidra-scripts/` — pyghidra probes (function discovery, xrefs,
   decompilation drivers). Reusable on any ColdFire Elektron OS image.
 - `firmware/` — the replacement OS.
+- `scripts/` — flash/probe tooling + the mod pipeline (`fwpatch.py`,
+  `splash_bmp.py`, `led_sweep.py`, `build_mod.py`).
 - `docs/` — protocol notes.
 
 ## Status
-Boot contract, container format, display pipeline: decoded and verified.
-Hardware flash test pending. See [STATUS.md](STATUS.md) in the private working
-repo; this public repo tracks stable findings.
+Boot contract, container format, display pipeline, splash bitmap + LED palette:
+decoded and verified. Replacement OS boots on hardware (memprobe all-PASS);
+static-data mods boot on hardware with the panel confirmed. See
+[STATUS.md](STATUS.md) for the working state; this public repo tracks stable
+findings.
