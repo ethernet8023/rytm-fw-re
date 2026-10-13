@@ -1,8 +1,34 @@
 # Analog Rytm MKII firmware RE — status handoff
 
+> **⚠️ READ THIS FIRST — recovery mode does NOT work over USB.**
+> The FUNC+power startup-menu receiver (OS UPGRADE) speaks **MIDI DIN
+> only** and never enumerates USB (hardware-verified: no lsusb/dmesg
+> events while sitting in READY TO RECEIVE). USB updates are received by
+> the *running* OS — so once a non-stock OS is on the unit, flashing back
+> over USB is **impossible** and a MIDI-DIN sender (USB-MIDI interface,
+> or the DIY FT232RL adapter below) is the ONLY way back. Assume one USB
+> shot per custom-OS cycle.
+
 **Goal:** reverse engineer the Analog Rytm MKII OS update (OS 1.74) and build a
 from-source C++ replacement firmware that can be compiled into a flashable
 `.syx`. Bit-identical is NOT required — "works the same" is the bar.
+
+**Current state (2026-10-12) — recovery crisis RESOLVED, unit restored:**
+- alpha4 (replacement OS + memprobe) flashed over USB and hardware-verified
+  booting; memprobe PASSED on all 7 candidate regions (biggest contiguous
+  hole: 16.3 MB at 0x41ad0000, zero static refs).
+- That spent the one USB shot per cycle → bootstrap recovery speaks MIDI DIN
+  only → built an FT232RL DIN adapter (2×200Ω driver), validated with an
+  audible note sweep on a test synth (`scripts/midi_sweep.py`), then streamed
+  stock 1.74 over DIN (~10 min) → **unit confirmed back on stock OS.**
+- View system, input pipeline, display flush, notification/queue machinery all
+  decoded (docs/ui-view-system.md, docs/display-protocol.md,
+  docs/core-interface-draft.md; full address map in the
+  `elektron-os-unwrap` skill references).
+- Adapter build + multimeter debug guide: `elektron-os-unwrap` skill →
+  references/midi-din-adapter.md (DIN male solder-side: 4 upper-LEFT,
+  5 upper-RIGHT; pins 1/3 are dead in MIDI jacks).
+
 
 **Where things live (durable, this project dir):**
 - `Analog-Rytm_MKII_OS1.74.syx` — stock OS (keep, never modify)
@@ -140,8 +166,11 @@ $C"objcopy" -O binary rytmfw.elf rytmfw.bin'
 **Gotchas learned (do not re-learn):**
 - gas rejects `move.l #sym,mem` on ColdFire — go through a data register.
 - ghidra headless refuses dot-element paths; pyghidra needed for .py scripts.
-- The tool's aPLib re-compression differs from stock's (its .syx is ~72 KB
-  smaller) — verify by re-extracting content, never by full-file cmp.
+- Elektron-firmware-tool `-r` repack of stock 1.74 is **byte-identical**
+  (full-file cmp clean; 14,696 packet checksums match) — the earlier
+  "aPLib differs, ~72 KB smaller" note was wrong for this file. If using
+  non-default compression (`-l 0..3`) content still round-trips but the
+  file differs; verify any repack by re-extracting content.
 - Version field max 10 chars ("RYTMFW_001" ok).
 - objdump -m accepts `m68k` for raw binaries (not m68k:54455).
 - Audio codec driver writes look like `move.b (arg-0x20),reg` — don't confuse
@@ -149,16 +178,28 @@ $C"objcopy" -O binary rytmfw.elf rytmfw.bin'
 - The `0x4013xxxx` cluster is +Drive FS/console, NOT display. The `0x402c8628`
   "256-entry table" is heap free-lists, not vectors.
 
-**Immediate next steps (in order):**
-1. Port the display driver into firmware/src/hal.cpp: ec07 channel init (from
-   FUN_40001c16, incl. DMA descriptor pokes), the 3 cmd primitives
-   (cmd/flush tile/commit), a 1024B plane pair, and a "draw test pattern +
-   present" in main. Verify code path shape vs stock disasm.
-2. Build + wrap -> RytmFW-alpha3.syx, verify checksums + content round-trip.
-3. (Hardware step, needs the actual unit + Elektron Transfer or C6 over MIDI):
-   flash stock-repack first as a no-op sanity check, then alpha3.
-   Bootloader is never touched by an OS update — a bad OS is recoverable via
-   [FUNC]+power-on startup menu.
+**Immediate next steps (updated 2026-10-12):**
+1. **[DONE — hardware, 2026-10-12]** stock-repack sanity flash, alpha4
+   flash + boot proof, memprobe (all 7 regions PASS), stock recovery over
+   DIN adapter. Details in the skill references + STATUS header above.
+2. **[DONE]** input dispatch RE: key handler = view vtable slot +0x08
+   (nonzero = consumed, ≡ modwerk ev_key), event struct {+0xc key,
+   +0x10 flags}, full FPGA→IRQ(0x80002028/2c)→queue-4→view pipeline
+   decoded; key-code table at 0x40235f00. See docs/ui-view-system.md.
+3. **[DONE]** memory budget: hardware memprobe PASSED — 16.3 MB hole at
+   0x41ad0000 (primary), 11 MB at 0x407d0000, 2 MB at 0x413f0000, 2 MB at
+   0x415f0000, FPGA SRAM 0x8000c000. Claim conservatively (~1 MB) until a
+   dense probe runs.
+4. **Audio render path (OPEN):** decompile the 0x4011f9e0 cluster + codec
+   DMA (0x40121eca, 0xfc03c000 sink) -> ev_render_in/out hook sites.
+   NOTE: rytm is analog-voice; "machines" here mean sample-playback
+   behavior per track, not digitakt-style SRC renderers.
+5. **Packed event word → physical button map (needs hardware):** alpha5 =
+   logging probe OS that dumps captured mailbox words / queue-4 nodes to
+   the display — now SAFE to flash, since DIN recovery is rescue-proven.
+6. **Core artifacts:** docs/core-interface-draft.md drafted (modwerk
+   interface.json shape); patch-site extraction script (address + length +
+   SHA-256 per hook) still to write.
 
 **Legal note:** static analysis of a lawfully obtained OS, no redistribution of
 Elektron binaries; community norm (EU 2009/24/EC Art. 5). The skill
