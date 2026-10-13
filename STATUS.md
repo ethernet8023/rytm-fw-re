@@ -203,6 +203,24 @@ $C"objcopy" -O binary rytmfw.elf rytmfw.bin'
    interface.json shape); patch-site extraction script (address + length +
    SHA-256 per hook) still to write.
 
+**Flash driver / USB reflash (stage 1 RE done, no hardware needed):**
+- Bootstrap (section 2, 42 KB, executes from SRAM) holds the complete upgrade
+  path: receive over the MIDI UART, parse the container, verify, write flash,
+  reboot. Flash is SPI NOR on DSPI 0xfc05c000 (polled), multi-vendor JEDEC with
+  an RDID probe selecting page/erase sizes; erase 256 KB blocks, program 512 B
+  units, staged in DDR at 0x3FF80008.
+- Flash layout: bootstrap + FPGA at 0x0-0x7FFFF (never written), MAIN OS at
+  0x80000+. Our own writer only touches >= 0x80000, so the FUNC+power safety net
+  survives by construction.
+- The bootstrap's opcode-level erase/program helpers sit behind absolute
+  pointers that do not point at those instructions in the file — the real driver
+  is runtime-loaded (likely from +Drive). Our own OS uses standard JEDEC
+  commands instead, so this does not block the USB reflash.
+- Writeup docs/flash-driver.md; plan + stages docs/usb-reflash.md. Probes 64-69
+  (bootstrap) and 35-63 (view system / input pipeline) are in
+  analysis/ghidra-scripts/; their raw decompiler output stays in the private
+  working tree.
+
 **Static-data mods (hardware-confirmed 2026-10-12: flashed over USB, booted, splash + LED animation seen on the unit):**
 - Pipeline in `scripts/`: `fwpatch.py` (load section 3 / patch / wrap / verify),
   `splash_bmp.py` (boot-splash bitmap <-> BMP, both directions),

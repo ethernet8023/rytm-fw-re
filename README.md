@@ -58,6 +58,24 @@ OS download — obtainable from Elektron's Support & Downloads page.
 - Gotcha: the nixpkgs m68k binutils `ld` *wrapper* segfaults and emits corrupt
   ELFs; invoke `ld.bfd` from the binutils package directly.
 
+### Flash + upgrade path
+- The whole upgrade path lives in the bootstrap section (42 KB, runs from SRAM):
+  receive over the MIDI UART, parse the container, verify, write flash, reboot.
+- Flash is **SPI NOR on the DSPI controller `0xfc05c000`** (polled, no DMA),
+  multi-vendor JEDEC: an RDID probe picks page/erase sizes per manufacturer.
+  Erase is 256 KB blocks, program is 512 B units, staged in DDR at `0x3FF80008`.
+- Flash layout: **bootstrap + FPGA at `0x0-0x7FFFF` (never written), MAIN OS at
+  `0x80000+`** — so writing only above `0x80000` keeps the FUNC+power recovery
+  path intact by construction.
+- The opcode-level erase/program helpers are called through absolute pointers
+  whose targets are *not* those instructions in the file (they resolve into
+  startup-menu code): the real driver is loaded or patched at runtime, most
+  likely from +Drive. A replacement OS does not need it — standard JEDEC
+  commands (WREN/RDSR/RDID/PP/`0xD8`) are enough.
+- Writeup: [docs/flash-driver.md](docs/flash-driver.md); the plan to make the
+  custom OS own USB and retire the DIN dependency:
+  [docs/usb-reflash.md](docs/usb-reflash.md).
+
 ### Static-data mods (hardware-confirmed)
 - The MAIN OS section carries the boot-splash art and the LED palette as plain
   static data at fixed addresses, so both can be replaced with same-size byte
